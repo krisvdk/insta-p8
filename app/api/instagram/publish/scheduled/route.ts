@@ -77,6 +77,33 @@ export async function POST(request: NextRequest) {
       caption: job.caption || "",
     })
 
+    let automationId: string | null = null
+    let automationError: string | null = null
+    if (job.automation_template) {
+      const template = job.automation_template
+      const { data: automation, error: createAutomationError } = await supabase
+        .from("automations")
+        .insert({
+          user_id: job.user_id,
+          name: template.name,
+          trigger_source: "comment",
+          trigger_type: template.trigger_type || "keyword",
+          trigger_value: template.trigger_value,
+          response_type: template.response_type || "pro",
+          response_content: template.response_content,
+          specific_media_id: result.mediaId,
+          is_active: true,
+        })
+        .select("id")
+        .single()
+
+      if (createAutomationError) {
+        automationError = `Reel published, but automation creation failed: ${createAutomationError.message}`
+      } else {
+        automationId = automation.id
+      }
+    }
+
     await supabase
       .from("scheduled_posts")
       .update({
@@ -84,13 +111,15 @@ export async function POST(request: NextRequest) {
         ig_container_id: result.containerId,
         ig_media_id: result.mediaId,
         permalink: result.permalink,
+        automation_id: automationId,
+        error_message: automationError,
         published_at: result.timestamp,
         updated_at: new Date().toISOString(),
       })
       .eq("id", scheduledPostId)
 
     await removeStoredMedia(job.media_url)
-    return NextResponse.json({ success: true, ...result })
+    return NextResponse.json({ success: true, ...result, automationId, automationError })
   } catch (error: any) {
     await supabase
       .from("scheduled_posts")

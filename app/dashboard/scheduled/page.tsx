@@ -12,6 +12,7 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  Zap,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -21,6 +22,10 @@ type ScheduledPost = {
   media_type: "IMAGE" | "REELS"
   media_url: string
   caption: string | null
+  automation_template: {
+    trigger_value?: string
+  } | null
+  automation_id: string | null
   scheduled_at: string
   qstash_message_id: string | null
   status: "SCHEDULED" | "PROCESSING" | "PUBLISHED" | string
@@ -52,6 +57,13 @@ function formatDate(value: string | null) {
 }
 
 function statusInfo(post: ScheduledPost) {
+  if (post.status === "PUBLISHED" && post.error_message) {
+    return {
+      label: "Published · automation issue",
+      icon: AlertCircle,
+      className: "border-destructive/30 bg-destructive/10 text-destructive",
+    }
+  }
   if (post.status === "PUBLISHED") {
     return {
       label: "Published",
@@ -113,13 +125,13 @@ export default function ScheduledPage() {
     ALL: posts.length,
     UPCOMING: posts.filter((post) => post.status === "SCHEDULED" || post.status === "PROCESSING").length,
     PUBLISHED: posts.filter((post) => post.status === "PUBLISHED").length,
-    ATTENTION: posts.filter((post) => Boolean(post.error_message) && post.status !== "PUBLISHED").length,
+    ATTENTION: posts.filter((post) => Boolean(post.error_message)).length,
   }), [posts])
 
   const visiblePosts = useMemo(() => posts.filter((post) => {
     if (filter === "UPCOMING") return post.status === "SCHEDULED" || post.status === "PROCESSING"
     if (filter === "PUBLISHED") return post.status === "PUBLISHED"
-    if (filter === "ATTENTION") return Boolean(post.error_message) && post.status !== "PUBLISHED"
+    if (filter === "ATTENTION") return Boolean(post.error_message)
     return true
   }), [filter, posts])
 
@@ -213,6 +225,18 @@ export default function ScheduledPage() {
                           {post.media_type === "REELS" ? <Film className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
                           {post.media_type === "REELS" ? "Reel" : "Post"}
                         </span>
+                        {post.automation_template && (
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-wider ${
+                            post.automation_id
+                              ? "border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                              : post.status === "PUBLISHED"
+                                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                                : "border-border bg-muted text-muted-foreground"
+                          }`}>
+                            <Zap className="w-3 h-3" />
+                            {post.automation_id ? "Automation active" : post.status === "PUBLISHED" ? "Automation failed" : "Automation queued"}
+                          </span>
+                        )}
                       </div>
 
                       <p className="text-sm text-foreground mt-3 line-clamp-2 whitespace-pre-wrap">
@@ -225,7 +249,13 @@ export default function ScheduledPage() {
                         {post.attempts > 0 && <span>Attempts: <strong className="font-medium text-foreground">{post.attempts}</strong></span>}
                       </div>
 
-                      {post.error_message && post.status !== "PUBLISHED" && (
+                      {post.automation_template?.trigger_value && (
+                        <p className="text-[11px] text-muted-foreground mt-2">
+                          Automation keyword: <strong className="font-medium text-foreground">{post.automation_template.trigger_value}</strong>
+                        </p>
+                      )}
+
+                      {post.error_message && (
                         <div className="mt-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                           {post.error_message}
                         </div>

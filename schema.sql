@@ -185,6 +185,8 @@ CREATE TABLE IF NOT EXISTS public.scheduled_posts (
   media_type TEXT NOT NULL CHECK (media_type IN ('IMAGE', 'REELS')),
   media_url TEXT NOT NULL,
   caption TEXT,
+  automation_template JSONB,
+  automation_id UUID REFERENCES public.automations(id) ON DELETE SET NULL,
   scheduled_at TIMESTAMPTZ NOT NULL,
   qstash_message_id TEXT,
   status TEXT NOT NULL DEFAULT 'SCHEDULED',

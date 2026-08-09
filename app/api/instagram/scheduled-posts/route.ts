@@ -17,6 +17,8 @@ export async function GET(request: NextRequest) {
         media_type,
         media_url,
         caption,
+        automation_template,
+        automation_id,
         scheduled_at,
         qstash_message_id,
         status,

@@ -12,6 +12,7 @@ import {
   Send,
   UploadCloud,
   X,
+  Zap,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useInstagramSession } from "@/hooks/use-instagram-session"
@@ -19,6 +20,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { TagInput } from "@/components/ui/tag-input"
 
 type MediaType = "IMAGE" | "REELS"
 type DeliveryMode = "NOW" | "SCHEDULE"
@@ -41,6 +43,10 @@ export default function PublishPage() {
   const [mediaType, setMediaType] = useState<MediaType>("IMAGE")
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("NOW")
   const [scheduledFor, setScheduledFor] = useState(defaultScheduleTime)
+  const [addAutomation, setAddAutomation] = useState(false)
+  const [automationKeywords, setAutomationKeywords] = useState<string[]>([])
+  const [automationMessage, setAutomationMessage] = useState("")
+  const [automationPublicReply, setAutomationPublicReply] = useState("Sent! Check your DMs 📩")
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [caption, setCaption] = useState("")
@@ -98,6 +104,14 @@ export default function PublishPage() {
       toast.error("Choose a time at least 30 seconds from now")
       return
     }
+    if (deliveryMode === "SCHEDULE" && addAutomation && automationKeywords.length === 0) {
+      toast.error("Add at least one automation keyword")
+      return
+    }
+    if (deliveryMode === "SCHEDULE" && addAutomation && !automationMessage.trim()) {
+      toast.error("Add the DM sent by the automation")
+      return
+    }
 
     const extension = mediaType === "IMAGE"
       ? "jpg"
@@ -129,6 +143,12 @@ export default function PublishPage() {
           mediaUrl: publicData.publicUrl,
           caption,
           publishAt: publishAt?.toISOString(),
+          automation: deliveryMode === "SCHEDULE" && addAutomation ? {
+            enabled: true,
+            keywords: automationKeywords,
+            message: automationMessage,
+            publicReply: automationPublicReply,
+          } : undefined,
         }),
       })
       const data = await response.json()
@@ -259,6 +279,71 @@ export default function PublishPage() {
                 </div>
               )}
             </div>
+
+            {deliveryMode === "SCHEDULE" && (
+              <div className={`rounded-2xl border p-4 md:p-5 transition-colors ${addAutomation ? "border-accent-yellow/50 bg-accent-yellow/5" : "border-border bg-muted/20"}`}>
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${addAutomation ? "bg-accent-yellow text-accent-yellow-foreground" : "bg-background border border-border text-muted-foreground"}`}>
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground">Add comment automation</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">It activates after publishing and targets only this post.</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={addAutomation}
+                    onClick={() => { setAddAutomation(!addAutomation); setResult(null) }}
+                    className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${addAutomation ? "bg-accent-yellow" : "bg-muted-foreground/30"}`}
+                  >
+                    <span className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${addAutomation ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
+
+                {addAutomation && (
+                  <div className="space-y-4 mt-5 pt-5 border-t border-border">
+                    <div>
+                      <label className="text-xs font-medium text-foreground">Comment keywords</label>
+                      <p className="text-[11px] text-muted-foreground mt-1 mb-2">Type a keyword and press Enter, for example “spree”.</p>
+                      <TagInput
+                        value={automationKeywords}
+                        onChange={(keywords) => { setAutomationKeywords(keywords); setResult(null) }}
+                        placeholder="keyword, press Enter"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label htmlFor="automationMessage" className="text-xs font-medium text-foreground">Private DM response</label>
+                        <span className="font-mono-ui text-[10px] text-muted-foreground">{automationMessage.length}/1000</span>
+                      </div>
+                      <Textarea
+                        id="automationMessage"
+                        value={automationMessage}
+                        onChange={(event) => { setAutomationMessage(event.target.value); setResult(null) }}
+                        placeholder="Here is the link I promised…"
+                        maxLength={1000}
+                        className="min-h-28 bg-background resize-y"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label htmlFor="automationPublicReply" className="text-xs font-medium text-foreground">Public comment reply</label>
+                        <span className="font-mono-ui text-[10px] text-muted-foreground">{automationPublicReply.length}/300</span>
+                      </div>
+                      <input
+                        id="automationPublicReply"
+                        value={automationPublicReply}
+                        onChange={(event) => { setAutomationPublicReply(event.target.value); setResult(null) }}
+                        maxLength={300}
+                        className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <div className="flex items-center justify-between mb-3">
