@@ -4,7 +4,7 @@ import type React from "react"
 import { cn } from "@/lib/utils"
 import {
   Zap, LayoutDashboard, LogOut, Settings, BarChart3,
-  MessageSquare, Snowflake, Send,
+  MessageSquare, Snowflake, Send, SquarePlus,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 
 const NAV = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
+  { href: "/dashboard/publish", icon: SquarePlus, label: "Publish" },
   { href: "/dashboard/automations", icon: Zap, label: "Automations" },
   { href: "/dashboard/inbox", icon: MessageSquare, label: "Inbox" },
   { href: "/dashboard/ice-breakers", icon: Snowflake, label: "Ice breakers" },
