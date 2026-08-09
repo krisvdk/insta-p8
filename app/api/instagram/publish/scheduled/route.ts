@@ -3,7 +3,7 @@ import { publishInstagramMedia, removeStoredMedia } from "@/lib/instagram-publis
 import { getScheduledPublishUrl, verifyQStashRequest } from "@/lib/qstash"
 import { getSupabaseServerClient } from "@/lib/supabase-server"
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 export async function POST(request: NextRequest) {
   const rawBody = await request.text()
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
     const result = await publishInstagramMedia(String(job.user_id), {
       mediaType: job.media_type,
       mediaUrl: job.media_url,
+      mediaItems: Array.isArray(job.media_items) ? job.media_items : [],
       caption: job.caption || "",
     })
 
@@ -118,7 +119,11 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", scheduledPostId)
 
-    await removeStoredMedia(job.media_url)
+    await removeStoredMedia(
+      job.media_type === "CAROUSEL" && Array.isArray(job.media_items)
+        ? job.media_items.map((item: { mediaUrl: string }) => item.mediaUrl)
+        : job.media_url,
+    )
     return NextResponse.json({ success: true, ...result, automationId, automationError })
   } catch (error: any) {
     await supabase

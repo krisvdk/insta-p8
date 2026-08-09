@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
         id,
         media_type,
         media_url,
+        media_items,
         caption,
         automation_template,
         automation_id,

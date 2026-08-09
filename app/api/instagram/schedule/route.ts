@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
     user_id: userId,
     media_type: input.mediaType,
     media_url: input.mediaUrl,
+    media_items: input.mediaType === "CAROUSEL" ? input.mediaItems : null,
     caption: input.caption,
     automation_template: automation.template,
     scheduled_at: scheduledAt.toISOString(),

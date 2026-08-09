@@ -4,8 +4,9 @@
 CREATE TABLE IF NOT EXISTS public.scheduled_posts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id BIGINT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  media_type TEXT NOT NULL CHECK (media_type IN ('IMAGE', 'REELS')),
+  media_type TEXT NOT NULL CHECK (media_type IN ('IMAGE', 'REELS', 'CAROUSEL')),
   media_url TEXT NOT NULL,
+  media_items JSONB,
   caption TEXT,
   automation_template JSONB,
   automation_id UUID REFERENCES public.automations(id) ON DELETE SET NULL,

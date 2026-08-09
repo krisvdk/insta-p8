@@ -34,7 +34,7 @@ export async function enqueueScheduledPublish(params: {
       "Content-Type": "application/json",
       "Upstash-Not-Before": String(params.notBefore),
       "Upstash-Retries": "3",
-      "Upstash-Timeout": "60s",
+      "Upstash-Timeout": "300s",
       "Upstash-Label": "instagram-scheduled-post",
     },
     body: JSON.stringify({ scheduledPostId: params.scheduledPostId }),

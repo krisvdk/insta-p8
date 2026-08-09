@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Film,
   Image as ImageIcon,
+  Images,
   Loader2,
   Send,
   UploadCloud,
@@ -22,7 +23,7 @@ import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { TagInput } from "@/components/ui/tag-input"
 
-type MediaType = "IMAGE" | "REELS"
+type MediaType = "IMAGE" | "REELS" | "CAROUSEL"
 type DeliveryMode = "NOW" | "SCHEDULE"
 
 type PublishResult =
@@ -47,26 +48,26 @@ export default function PublishPage() {
   const [automationKeywords, setAutomationKeywords] = useState<string[]>([])
   const [automationMessage, setAutomationMessage] = useState("")
   const [automationPublicReply, setAutomationPublicReply] = useState("Sent! Check your DMs 📩")
-  const [file, setFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [files, setFiles] = useState<File[]>([])
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [caption, setCaption] = useState("")
   const [dragging, setDragging] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [result, setResult] = useState<PublishResult | null>(null)
 
   useEffect(() => {
-    if (!file) {
-      setPreviewUrl(null)
+    if (files.length === 0) {
+      setPreviewUrls([])
       return
     }
 
-    const url = URL.createObjectURL(file)
-    setPreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [file])
+    const urls = files.map((file) => URL.createObjectURL(file))
+    setPreviewUrls(urls)
+    return () => urls.forEach((url) => URL.revokeObjectURL(url))
+  }, [files])
 
   const resetFile = () => {
-    setFile(null)
+    setFiles([])
     setResult(null)
     if (inputRef.current) inputRef.current.value = ""
   }
@@ -77,27 +78,38 @@ export default function PublishPage() {
     resetFile()
   }
 
-  const acceptFile = (candidate?: File) => {
-    if (!candidate) return
+  const acceptFiles = (candidates?: FileList | File[]) => {
+    const selected = Array.from(candidates || [])
+    if (selected.length === 0) return
 
-    const validImage = candidate.type === "image/jpeg" || /\.jpe?g$/i.test(candidate.name)
-    const validVideo = ["video/mp4", "video/quicktime"].includes(candidate.type) || /\.(mp4|mov)$/i.test(candidate.name)
+    const isImage = (candidate: File) => candidate.type === "image/jpeg" || /\.jpe?g$/i.test(candidate.name)
+    const isVideo = (candidate: File) => ["video/mp4", "video/quicktime"].includes(candidate.type) || /\.(mp4|mov)$/i.test(candidate.name)
 
-    if (mediaType === "IMAGE" && !validImage) {
+    if (mediaType === "IMAGE" && !isImage(selected[0])) {
       toast.error("Instagram image posts must be JPG or JPEG files")
       return
     }
-    if (mediaType === "REELS" && !validVideo) {
+    if (mediaType === "REELS" && !isVideo(selected[0])) {
       toast.error("Reels must be MP4 or MOV files")
       return
     }
+    if (mediaType === "CAROUSEL") {
+      if (selected.length < 2 || selected.length > 10) {
+        toast.error("Choose between 2 and 10 photos or videos for a carousel")
+        return
+      }
+      if (selected.some((candidate) => !isImage(candidate) && !isVideo(candidate))) {
+        toast.error("Carousel items must be JPG, JPEG, MP4, or MOV files")
+        return
+      }
+    }
 
-    setFile(candidate)
+    setFiles(mediaType === "CAROUSEL" ? selected : [selected[0]])
     setResult(null)
   }
 
   const submitPost = async () => {
-    if (!file || !userId || status) return
+    if (files.length === 0 || !userId || status) return
 
     const publishAt = deliveryMode === "SCHEDULE" ? new Date(scheduledFor) : null
     if (publishAt && (!Number.isFinite(publishAt.getTime()) || publishAt.getTime() < Date.now() + 30_000)) {
@@ -113,26 +125,35 @@ export default function PublishPage() {
       return
     }
 
-    const extension = mediaType === "IMAGE"
-      ? "jpg"
-      : file.name.toLowerCase().endsWith(".mov") ? "mov" : "mp4"
-    const storagePath = `${userId}/manual/${Date.now()}-${crypto.randomUUID()}.${extension}`
     const supabase = getSupabaseBrowserClient()
+    const uploads = files.map((file) => {
+      const isImage = file.type === "image/jpeg" || /\.jpe?g$/i.test(file.name)
+      const extension = isImage ? "jpg" : file.name.toLowerCase().endsWith(".mov") ? "mov" : "mp4"
+      return {
+        file,
+        mediaType: isImage ? "IMAGE" as const : "VIDEO" as const,
+        storagePath: `${userId}/manual/${Date.now()}-${crypto.randomUUID()}.${extension}`,
+      }
+    })
 
     try {
       setResult(null)
-      setStatus("Uploading media…")
+      const mediaItems: Array<{ mediaType: "IMAGE" | "VIDEO"; mediaUrl: string }> = []
+      for (let index = 0; index < uploads.length; index += 1) {
+        const upload = uploads[index]
+        setStatus(uploads.length > 1 ? `Uploading media ${index + 1} of ${uploads.length}…` : "Uploading media…")
+        const { error: uploadError } = await supabase.storage
+          .from("reels")
+          .upload(upload.storagePath, upload.file, {
+            contentType: upload.file.type || (upload.mediaType === "IMAGE" ? "image/jpeg" : "video/mp4"),
+            cacheControl: "3600",
+            upsert: false,
+          })
+        if (uploadError) throw new Error(uploadError.message)
+        const { data: publicData } = supabase.storage.from("reels").getPublicUrl(upload.storagePath)
+        mediaItems.push({ mediaType: upload.mediaType, mediaUrl: publicData.publicUrl })
+      }
 
-      const { error: uploadError } = await supabase.storage
-        .from("reels")
-        .upload(storagePath, file, {
-          contentType: file.type || (mediaType === "IMAGE" ? "image/jpeg" : "video/mp4"),
-          cacheControl: "3600",
-          upsert: false,
-        })
-      if (uploadError) throw new Error(uploadError.message)
-
-      const { data: publicData } = supabase.storage.from("reels").getPublicUrl(storagePath)
       setStatus(deliveryMode === "NOW" ? "Instagram is processing and publishing…" : "Scheduling with QStash…")
 
       const response = await fetch(deliveryMode === "NOW" ? "/api/instagram/publish" : "/api/instagram/schedule", {
@@ -140,7 +161,8 @@ export default function PublishPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mediaType,
-          mediaUrl: publicData.publicUrl,
+          mediaUrl: mediaItems[0]?.mediaUrl,
+          mediaItems: mediaType === "CAROUSEL" ? mediaItems : undefined,
           caption,
           publishAt: publishAt?.toISOString(),
           automation: deliveryMode === "SCHEDULE" && addAutomation ? {
@@ -156,18 +178,18 @@ export default function PublishPage() {
 
       if (deliveryMode === "NOW") {
         setResult({ kind: "published", mediaId: data.mediaId, permalink: data.permalink })
-        toast.success(mediaType === "IMAGE" ? "Post published" : "Reel published")
+        toast.success(mediaType === "REELS" ? "Reel published" : mediaType === "CAROUSEL" ? "Carousel published" : "Post published")
 
         // Instagram has copied the media after media_publish succeeds, so the temporary
         // upload is no longer needed. A failed cleanup should not turn success into failure.
-        await supabase.storage.from("reels").remove([storagePath])
+        await supabase.storage.from("reels").remove(uploads.map((upload) => upload.storagePath))
       } else {
         setResult({ kind: "scheduled", messageId: data.messageId, scheduledAt: data.scheduledAt })
-        toast.success(mediaType === "IMAGE" ? "Post scheduled" : "Reel scheduled")
+        toast.success(mediaType === "REELS" ? "Reel scheduled" : mediaType === "CAROUSEL" ? "Carousel scheduled" : "Post scheduled")
       }
     } catch (error: any) {
       toast.error(error?.message || "Could not publish to Instagram")
-      await supabase.storage.from("reels").remove([storagePath])
+      await supabase.storage.from("reels").remove(uploads.map((upload) => upload.storagePath))
     } finally {
       setStatus(null)
     }
@@ -188,7 +210,7 @@ export default function PublishPage() {
           <p className="font-mono-ui text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-2">Content studio</p>
           <h1 className="font-serif-display text-4xl md:text-5xl text-foreground leading-none">Publish to Instagram</h1>
           <p className="text-sm text-muted-foreground mt-3">
-            Upload a post or Reel and publish it now or schedule it for later to @{username || "your account"}.
+            Upload a post, Reel, or carousel and publish it now or schedule it for later to @{username || "your account"}.
           </p>
         </div>
 
@@ -196,7 +218,7 @@ export default function PublishPage() {
           <Card className="p-5 md:p-7 bg-card border-border space-y-7">
             <div>
               <label className="text-xs font-bold uppercase tracking-wider text-foreground">Format</label>
-              <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="grid sm:grid-cols-3 gap-3 mt-3">
                 <button
                   type="button"
                   onClick={() => selectType("IMAGE")}
@@ -225,6 +247,21 @@ export default function PublishPage() {
                   <div>
                     <p className="text-sm font-semibold text-foreground">Reel</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">MP4 or MOV</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => selectType("CAROUSEL")}
+                  className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-colors ${
+                    mediaType === "CAROUSEL"
+                      ? "border-accent-yellow bg-accent-yellow/10"
+                      : "border-border bg-muted/20 hover:bg-accent"
+                  }`}
+                >
+                  <Images className={`w-5 h-5 ${mediaType === "CAROUSEL" ? "text-accent-yellow-foreground dark:text-accent-yellow" : "text-muted-foreground"}`} />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Carousel</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">2–10 items</p>
                   </div>
                 </button>
               </div>
@@ -348,7 +385,7 @@ export default function PublishPage() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <label className="text-xs font-bold uppercase tracking-wider text-foreground">Media</label>
-                {file && (
+                {files.length > 0 && (
                   <button type="button" onClick={resetFile} className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1">
                     <X className="w-3.5 h-3.5" /> Remove
                   </button>
@@ -358,8 +395,9 @@ export default function PublishPage() {
                 ref={inputRef}
                 type="file"
                 className="hidden"
-                accept={mediaType === "IMAGE" ? ".jpg,.jpeg,image/jpeg" : ".mp4,.mov,video/mp4,video/quicktime"}
-                onChange={(event) => acceptFile(event.target.files?.[0])}
+                multiple={mediaType === "CAROUSEL"}
+                accept={mediaType === "IMAGE" ? ".jpg,.jpeg,image/jpeg" : mediaType === "REELS" ? ".mp4,.mov,video/mp4,video/quicktime" : ".jpg,.jpeg,.mp4,.mov,image/jpeg,video/mp4,video/quicktime"}
+                onChange={(event) => acceptFiles(event.target.files || undefined)}
               />
               <button
                 type="button"
@@ -370,7 +408,7 @@ export default function PublishPage() {
                 onDrop={(event) => {
                   event.preventDefault()
                   setDragging(false)
-                  acceptFile(event.dataTransfer.files?.[0])
+                  acceptFiles(event.dataTransfer.files)
                 }}
                 className={`w-full min-h-48 rounded-2xl border border-dashed flex flex-col items-center justify-center gap-3 p-6 transition-colors ${
                   dragging ? "border-accent-yellow bg-accent-yellow/10" : "border-border bg-muted/20 hover:bg-accent"
@@ -380,12 +418,33 @@ export default function PublishPage() {
                   <UploadCloud className="w-6 h-6 text-muted-foreground" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-foreground">{file ? file.name : "Choose a file or drop it here"}</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {files.length > 0
+                      ? mediaType === "CAROUSEL" ? `${files.length} carousel items selected` : files[0].name
+                      : mediaType === "CAROUSEL" ? "Choose 2–10 files or drop them here" : "Choose a file or drop it here"}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : mediaType === "IMAGE" ? "A high-quality JPEG works best" : "Vertical 9:16 video is recommended"}
+                    {files.length > 0
+                      ? `${(files.reduce((total, file) => total + file.size, 0) / 1024 / 1024).toFixed(1)} MB total`
+                      : mediaType === "IMAGE" ? "A high-quality JPEG works best" : mediaType === "REELS" ? "Vertical 9:16 video is recommended" : "Mix JPG images with MP4 or MOV videos"}
                   </p>
                 </div>
               </button>
+              {mediaType === "CAROUSEL" && previewUrls.length > 0 && (
+                <div className="grid grid-cols-5 gap-2 mt-3">
+                  {previewUrls.map((url, index) => (
+                    <div key={url} className="relative aspect-square overflow-hidden rounded-lg bg-black">
+                      {files[index]?.type.startsWith("video/") ? (
+                        <video src={url} muted preload="metadata" className="h-full w-full object-cover" />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={url} alt={`Carousel item ${index + 1}`} className="h-full w-full object-cover" />
+                      )}
+                      <span className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[9px] text-white">{index + 1}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
@@ -409,7 +468,7 @@ export default function PublishPage() {
               type="button"
               size="lg"
               onClick={submitPost}
-              disabled={!file || !userId || !!status || caption.length > MAX_CAPTION_LENGTH || (deliveryMode === "SCHEDULE" && !scheduledFor)}
+              disabled={files.length === 0 || !userId || !!status || caption.length > MAX_CAPTION_LENGTH || (deliveryMode === "SCHEDULE" && !scheduledFor)}
               className="w-full h-12 bg-accent-yellow text-accent-yellow-foreground hover:bg-accent-yellow/90"
             >
               {status ? <Loader2 className="w-4 h-4 animate-spin" /> : deliveryMode === "SCHEDULE" ? <CalendarClock className="w-4 h-4" /> : <Send className="w-4 h-4" />}
@@ -454,20 +513,25 @@ export default function PublishPage() {
               </div>
             </div>
             <div className="aspect-square bg-black flex items-center justify-center overflow-hidden">
-              {previewUrl ? (
-                mediaType === "IMAGE" ? (
+              {previewUrls[0] ? (
+                mediaType === "IMAGE" || (mediaType === "CAROUSEL" && !files[0]?.type.startsWith("video/")) ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={previewUrl} alt="Post preview" className="w-full h-full object-contain" />
+                  <img src={previewUrls[0]} alt="Post preview" className="w-full h-full object-contain" />
                 ) : (
-                  <video src={previewUrl} controls muted className="w-full h-full object-contain" />
+                  <video src={previewUrls[0]} controls muted className="w-full h-full object-contain" />
                 )
               ) : (
                 <div className="text-center px-6">
-                  {mediaType === "IMAGE" ? <ImageIcon className="w-9 h-9 text-neutral-600 mx-auto" /> : <Film className="w-9 h-9 text-neutral-600 mx-auto" />}
+                  {mediaType === "IMAGE" ? <ImageIcon className="w-9 h-9 text-neutral-600 mx-auto" /> : mediaType === "REELS" ? <Film className="w-9 h-9 text-neutral-600 mx-auto" /> : <Images className="w-9 h-9 text-neutral-600 mx-auto" />}
                   <p className="text-xs text-neutral-500 mt-3">Your media preview appears here</p>
                 </div>
               )}
             </div>
+            {mediaType === "CAROUSEL" && previewUrls.length > 1 && (
+              <div className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground">
+                Previewing item 1 of {previewUrls.length}
+              </div>
+            )}
             <div className="p-4 min-h-24">
               <p className="text-xs text-foreground whitespace-pre-wrap break-words">
                 {caption || <span className="text-muted-foreground">Your caption will appear here.</span>}

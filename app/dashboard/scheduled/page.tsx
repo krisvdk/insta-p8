@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Film,
   Image as ImageIcon,
+  Images,
   Loader2,
   Plus,
   RefreshCw,
@@ -19,8 +20,9 @@ import { Card } from "@/components/ui/card"
 
 type ScheduledPost = {
   id: string
-  media_type: "IMAGE" | "REELS"
+  media_type: "IMAGE" | "REELS" | "CAROUSEL"
   media_url: string
+  media_items: Array<{ mediaType: "IMAGE" | "VIDEO"; mediaUrl: string }> | null
   caption: string | null
   automation_template: {
     trigger_value?: string
@@ -190,7 +192,7 @@ export default function ScheduledPage() {
             <CalendarClock className="w-10 h-10 text-muted-foreground mx-auto mb-4" />
             <h2 className="font-serif-display text-2xl text-foreground">Nothing here yet</h2>
             <p className="text-sm text-muted-foreground mt-2 mb-5">
-              {filter === "ALL" ? "Schedule your first Instagram post or Reel." : "No posts match this status."}
+              {filter === "ALL" ? "Schedule your first Instagram post, Reel, or carousel." : "No posts match this status."}
             </p>
             <Button asChild variant="outline"><Link href="/dashboard/publish">Create a post</Link></Button>
           </Card>
@@ -208,8 +210,15 @@ export default function ScheduledPage() {
                         <img src={post.media_url} alt="Scheduled post" className="w-full h-full object-cover" />
                       ) : post.status !== "PUBLISHED" && post.media_type === "REELS" ? (
                         <video src={post.media_url} muted preload="metadata" className="w-full h-full object-cover" />
+                      ) : post.status !== "PUBLISHED" && post.media_type === "CAROUSEL" && post.media_items?.[0]?.mediaType === "VIDEO" ? (
+                        <video src={post.media_items[0].mediaUrl} muted preload="metadata" className="w-full h-full object-cover" />
+                      ) : post.status !== "PUBLISHED" && post.media_type === "CAROUSEL" && post.media_items?.[0] ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={post.media_items[0].mediaUrl} alt="Scheduled carousel" className="w-full h-full object-cover" />
                       ) : post.media_type === "REELS" ? (
                         <Film className="w-7 h-7 text-neutral-600" />
+                      ) : post.media_type === "CAROUSEL" ? (
+                        <Images className="w-7 h-7 text-neutral-600" />
                       ) : (
                         <ImageIcon className="w-7 h-7 text-neutral-600" />
                       )}
@@ -222,8 +231,8 @@ export default function ScheduledPage() {
                           {status.label}
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">
-                          {post.media_type === "REELS" ? <Film className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                          {post.media_type === "REELS" ? "Reel" : "Post"}
+                          {post.media_type === "REELS" ? <Film className="w-3 h-3" /> : post.media_type === "CAROUSEL" ? <Images className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                          {post.media_type === "REELS" ? "Reel" : post.media_type === "CAROUSEL" ? `Carousel · ${post.media_items?.length || 0}` : "Post"}
                         </span>
                         {post.automation_template && (
                           <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-wider ${

@@ -3,11 +3,16 @@ import { getSupabaseServerClient } from "@/lib/supabase-server"
 const GRAPH = "https://graph.instagram.com/v24.0"
 export const MAX_CAPTION_LENGTH = 2200
 
-export type InstagramPublishType = "IMAGE" | "REELS"
+export type InstagramPublishType = "IMAGE" | "REELS" | "CAROUSEL"
+export type InstagramCarouselItem = {
+  mediaType: "IMAGE" | "VIDEO"
+  mediaUrl: string
+}
 
 export type InstagramPublishInput = {
   mediaType: InstagramPublishType
   mediaUrl: string
+  mediaItems: InstagramCarouselItem[]
   caption: string
 }
 
@@ -34,15 +39,30 @@ export function parsePublishInput(body: any): InstagramPublishInput {
   return {
     mediaType: body?.mediaType,
     mediaUrl: typeof body?.mediaUrl === "string" ? body.mediaUrl.trim() : "",
+    mediaItems: Array.isArray(body?.mediaItems)
+      ? body.mediaItems.map((item: any) => ({
+        mediaType: item?.mediaType,
+        mediaUrl: typeof item?.mediaUrl === "string" ? item.mediaUrl.trim() : "",
+      }))
+      : [],
     caption: typeof body?.caption === "string" ? body.caption.trim() : "",
   }
 }
 
 export function validatePublishInput(input: InstagramPublishInput): string | null {
-  if (input.mediaType !== "IMAGE" && input.mediaType !== "REELS") {
-    return "Choose an image post or Reel"
+  if (input.mediaType !== "IMAGE" && input.mediaType !== "REELS" && input.mediaType !== "CAROUSEL") {
+    return "Choose an image post, Reel, or carousel"
   }
-  if (!isAllowedStorageUrl(input.mediaUrl)) {
+  if (input.mediaType === "CAROUSEL") {
+    if (input.mediaItems.length < 2 || input.mediaItems.length > 10) {
+      return "Carousels must contain between 2 and 10 photos or videos"
+    }
+    if (input.mediaItems.some((item) =>
+      (item.mediaType !== "IMAGE" && item.mediaType !== "VIDEO") || !isAllowedStorageUrl(item.mediaUrl)
+    )) {
+      return "Upload every carousel item through insta-p8 before publishing"
+    }
+  } else if (!isAllowedStorageUrl(input.mediaUrl)) {
     return "Upload the media through insta-p8 before publishing"
   }
   if (input.caption.length > MAX_CAPTION_LENGTH) {
@@ -139,17 +159,41 @@ export async function publishInstagramMedia(
   }
 
   const igUserId = String(user.business_account_id || user.id)
-  const containerParams: Record<string, string> = input.caption ? { caption: input.caption } : {}
+  let container: GraphResult
+  if (input.mediaType === "CAROUSEL") {
+    const childIds: string[] = []
+    for (const item of input.mediaItems) {
+      const childParams: Record<string, string> = { is_carousel_item: "true" }
+      if (item.mediaType === "IMAGE") {
+        childParams.image_url = item.mediaUrl
+      } else {
+        childParams.media_type = "VIDEO"
+        childParams.video_url = item.mediaUrl
+      }
 
-  if (input.mediaType === "IMAGE") {
-    containerParams.image_url = input.mediaUrl
+      const child = await graphPost(`${igUserId}/media`, user.access_token, childParams)
+      if (!child.id) throw new Error("Instagram did not return a carousel item container ID")
+      childIds.push(child.id)
+    }
+
+    await Promise.all(childIds.map((childId) => waitForContainer(childId, user.access_token)))
+
+    container = await graphPost(`${igUserId}/media`, user.access_token, {
+      media_type: "CAROUSEL",
+      children: childIds.join(","),
+      ...(input.caption ? { caption: input.caption } : {}),
+    })
   } else {
-    containerParams.media_type = "REELS"
-    containerParams.video_url = input.mediaUrl
-    containerParams.share_to_feed = "true"
+    const containerParams: Record<string, string> = input.caption ? { caption: input.caption } : {}
+    if (input.mediaType === "IMAGE") {
+      containerParams.image_url = input.mediaUrl
+    } else {
+      containerParams.media_type = "REELS"
+      containerParams.video_url = input.mediaUrl
+      containerParams.share_to_feed = "true"
+    }
+    container = await graphPost(`${igUserId}/media`, user.access_token, containerParams)
   }
-
-  const container = await graphPost(`${igUserId}/media`, user.access_token, containerParams)
   if (!container.id) throw new Error("Instagram did not return a media container ID")
 
   await waitForContainer(container.id, user.access_token)
@@ -179,18 +223,20 @@ export async function publishInstagramMedia(
   }
 }
 
-export async function removeStoredMedia(mediaUrl: string): Promise<void> {
+export async function removeStoredMedia(mediaUrl: string | string[]): Promise<void> {
   try {
     const marker = "/storage/v1/object/public/reels/"
-    const pathname = new URL(mediaUrl).pathname
-    const index = pathname.indexOf(marker)
-    if (index < 0) return
-
-    const storagePath = decodeURIComponent(pathname.slice(index + marker.length))
-    if (!storagePath) return
+    const storagePaths = (Array.isArray(mediaUrl) ? mediaUrl : [mediaUrl]).flatMap((url) => {
+      const pathname = new URL(url).pathname
+      const index = pathname.indexOf(marker)
+      if (index < 0) return []
+      const storagePath = decodeURIComponent(pathname.slice(index + marker.length))
+      return storagePath ? [storagePath] : []
+    })
+    if (storagePaths.length === 0) return
 
     const supabase = await getSupabaseServerClient()
-    await supabase.storage.from("reels").remove([storagePath])
+    await supabase.storage.from("reels").remove(storagePaths)
   } catch (error) {
     console.warn("[publish] Could not remove temporary media:", error)
   }
