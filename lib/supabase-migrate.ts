@@ -29,6 +29,7 @@ const EXPECTED_TABLES = [
   "content_pool",
   "scheduler_config",
   "reels_posts",
+  "scheduled_posts",
   "dm_queue",
   "unlock_attempts",
 ]

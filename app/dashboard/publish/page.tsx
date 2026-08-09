@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
+  CalendarClock,
   CheckCircle2,
   ExternalLink,
   Film,
@@ -20,18 +21,26 @@ import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 
 type MediaType = "IMAGE" | "REELS"
+type DeliveryMode = "NOW" | "SCHEDULE"
 
-type PublishResult = {
-  mediaId: string
-  permalink: string | null
-}
+type PublishResult =
+  | { kind: "published"; mediaId: string; permalink: string | null }
+  | { kind: "scheduled"; messageId: string; scheduledAt: string }
 
 const MAX_CAPTION_LENGTH = 2200
+
+function defaultScheduleTime() {
+  const date = new Date(Date.now() + 10 * 60 * 1000)
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000)
+  return localDate.toISOString().slice(0, 16)
+}
 
 export default function PublishPage() {
   const { userId, username, isLoading: sessionLoading } = useInstagramSession()
   const inputRef = useRef<HTMLInputElement>(null)
   const [mediaType, setMediaType] = useState<MediaType>("IMAGE")
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("NOW")
+  const [scheduledFor, setScheduledFor] = useState(defaultScheduleTime)
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [caption, setCaption] = useState("")
@@ -81,8 +90,14 @@ export default function PublishPage() {
     setResult(null)
   }
 
-  const publish = async () => {
+  const submitPost = async () => {
     if (!file || !userId || status) return
+
+    const publishAt = deliveryMode === "SCHEDULE" ? new Date(scheduledFor) : null
+    if (publishAt && (!Number.isFinite(publishAt.getTime()) || publishAt.getTime() < Date.now() + 30_000)) {
+      toast.error("Choose a time at least 30 seconds from now")
+      return
+    }
 
     const extension = mediaType === "IMAGE"
       ? "jpg"
@@ -104,26 +119,32 @@ export default function PublishPage() {
       if (uploadError) throw new Error(uploadError.message)
 
       const { data: publicData } = supabase.storage.from("reels").getPublicUrl(storagePath)
-      setStatus("Instagram is processing and publishing…")
+      setStatus(deliveryMode === "NOW" ? "Instagram is processing and publishing…" : "Scheduling with QStash…")
 
-      const response = await fetch("/api/instagram/publish", {
+      const response = await fetch(deliveryMode === "NOW" ? "/api/instagram/publish" : "/api/instagram/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mediaType,
           mediaUrl: publicData.publicUrl,
           caption,
+          publishAt: publishAt?.toISOString(),
         }),
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || "Could not publish to Instagram")
 
-      setResult({ mediaId: data.mediaId, permalink: data.permalink })
-      toast.success(mediaType === "IMAGE" ? "Post published" : "Reel published")
+      if (deliveryMode === "NOW") {
+        setResult({ kind: "published", mediaId: data.mediaId, permalink: data.permalink })
+        toast.success(mediaType === "IMAGE" ? "Post published" : "Reel published")
 
-      // Instagram has copied the media after media_publish succeeds, so the temporary
-      // upload is no longer needed. A failed cleanup should not turn success into failure.
-      await supabase.storage.from("reels").remove([storagePath])
+        // Instagram has copied the media after media_publish succeeds, so the temporary
+        // upload is no longer needed. A failed cleanup should not turn success into failure.
+        await supabase.storage.from("reels").remove([storagePath])
+      } else {
+        setResult({ kind: "scheduled", messageId: data.messageId, scheduledAt: data.scheduledAt })
+        toast.success(mediaType === "IMAGE" ? "Post scheduled" : "Reel scheduled")
+      }
     } catch (error: any) {
       toast.error(error?.message || "Could not publish to Instagram")
       await supabase.storage.from("reels").remove([storagePath])
@@ -147,7 +168,7 @@ export default function PublishPage() {
           <p className="font-mono-ui text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-2">Content studio</p>
           <h1 className="font-serif-display text-4xl md:text-5xl text-foreground leading-none">Publish to Instagram</h1>
           <p className="text-sm text-muted-foreground mt-3">
-            Upload a post or Reel and publish it immediately to @{username || "your account"}.
+            Upload a post or Reel and publish it now or schedule it for later to @{username || "your account"}.
           </p>
         </div>
 
@@ -187,6 +208,56 @@ export default function PublishPage() {
                   </div>
                 </button>
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-foreground">Delivery</label>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <button
+                  type="button"
+                  onClick={() => { setDeliveryMode("NOW"); setResult(null) }}
+                  className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-colors ${
+                    deliveryMode === "NOW"
+                      ? "border-accent-yellow bg-accent-yellow/10"
+                      : "border-border bg-muted/20 hover:bg-accent"
+                  }`}
+                >
+                  <Send className={`w-5 h-5 ${deliveryMode === "NOW" ? "text-accent-yellow-foreground dark:text-accent-yellow" : "text-muted-foreground"}`} />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Publish now</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Send immediately</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setDeliveryMode("SCHEDULE"); setResult(null) }}
+                  className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-colors ${
+                    deliveryMode === "SCHEDULE"
+                      ? "border-accent-yellow bg-accent-yellow/10"
+                      : "border-border bg-muted/20 hover:bg-accent"
+                  }`}
+                >
+                  <CalendarClock className={`w-5 h-5 ${deliveryMode === "SCHEDULE" ? "text-accent-yellow-foreground dark:text-accent-yellow" : "text-muted-foreground"}`} />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Schedule</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Deliver with QStash</p>
+                  </div>
+                </button>
+              </div>
+              {deliveryMode === "SCHEDULE" && (
+                <div className="mt-3 rounded-xl border border-border bg-muted/20 p-4">
+                  <label htmlFor="scheduledFor" className="text-xs font-medium text-foreground">Publish date and time</label>
+                  <input
+                    id="scheduledFor"
+                    type="datetime-local"
+                    value={scheduledFor}
+                    min={defaultScheduleTime()}
+                    onChange={(event) => { setScheduledFor(event.target.value); setResult(null) }}
+                    className="mt-2 h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-2">Time is interpreted in your current device timezone.</p>
+                </div>
+              )}
             </div>
 
             <div>
@@ -252,21 +323,32 @@ export default function PublishPage() {
             <Button
               type="button"
               size="lg"
-              onClick={publish}
-              disabled={!file || !userId || !!status || caption.length > MAX_CAPTION_LENGTH}
+              onClick={submitPost}
+              disabled={!file || !userId || !!status || caption.length > MAX_CAPTION_LENGTH || (deliveryMode === "SCHEDULE" && !scheduledFor)}
               className="w-full h-12 bg-accent-yellow text-accent-yellow-foreground hover:bg-accent-yellow/90"
             >
-              {status ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {status || "Publish now"}
+              {status ? <Loader2 className="w-4 h-4 animate-spin" /> : deliveryMode === "SCHEDULE" ? <CalendarClock className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+              {status || (deliveryMode === "SCHEDULE" ? "Schedule post" : "Publish now")}
             </Button>
 
             {result && (
               <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground">Published successfully</p>
-                  <p className="font-mono-ui text-[10px] text-muted-foreground mt-1 truncate">Media ID: {result.mediaId}</p>
-                  {result.permalink && (
+                  <p className="text-sm font-semibold text-foreground">
+                    {result.kind === "published" ? "Published successfully" : "Scheduled successfully"}
+                  </p>
+                  <p className="font-mono-ui text-[10px] text-muted-foreground mt-1 truncate">
+                    {result.kind === "published"
+                      ? `Media ID: ${result.mediaId}`
+                      : `QStash ID: ${result.messageId}`}
+                  </p>
+                  {result.kind === "scheduled" && (
+                    <p className="text-xs text-foreground mt-2">
+                      {new Date(result.scheduledAt).toLocaleString()}
+                    </p>
+                  )}
+                  {result.kind === "published" && result.permalink && (
                     <Link href={result.permalink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-foreground underline underline-offset-4 mt-2">
                       View on Instagram <ExternalLink className="w-3 h-3" />
                     </Link>

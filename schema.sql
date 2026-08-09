@@ -177,6 +177,29 @@ CREATE TABLE IF NOT EXISTS public.reels_posts (
 );
 
 -- ==========================================
+-- 10b. Table: public.scheduled_posts
+-- ==========================================
+CREATE TABLE IF NOT EXISTS public.scheduled_posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id BIGINT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  media_type TEXT NOT NULL CHECK (media_type IN ('IMAGE', 'REELS')),
+  media_url TEXT NOT NULL,
+  caption TEXT,
+  scheduled_at TIMESTAMPTZ NOT NULL,
+  qstash_message_id TEXT,
+  status TEXT NOT NULL DEFAULT 'SCHEDULED',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  processing_started_at TIMESTAMPTZ,
+  ig_container_id TEXT,
+  ig_media_id TEXT,
+  permalink TEXT,
+  error_message TEXT,
+  published_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==========================================
 -- 11. Table: public.dm_queue
 -- ==========================================
 CREATE TABLE IF NOT EXISTS public.dm_queue (
@@ -214,6 +237,8 @@ CREATE INDEX IF NOT EXISTS idx_automations_user_source ON public.automations(use
 CREATE INDEX IF NOT EXISTS idx_content_pool_user_sequence ON public.content_pool(user_id, sequence_index);
 CREATE INDEX IF NOT EXISTS idx_scheduler_next_run ON public.scheduler_config(next_run_at);
 CREATE INDEX IF NOT EXISTS idx_reels_posts_user_status ON public.reels_posts(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_scheduled_posts_user_status ON public.scheduled_posts(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_scheduled_posts_scheduled_at ON public.scheduled_posts(scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_unlock_attempts_updated ON public.unlock_attempts(updated_at);
 
 -- ==========================================
@@ -393,6 +418,7 @@ ALTER TABLE public.ice_breakers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.content_pool ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scheduler_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reels_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.scheduled_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dm_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.unlock_attempts ENABLE ROW LEVEL SECURITY;
 
