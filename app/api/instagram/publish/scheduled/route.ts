@@ -41,6 +41,9 @@ export async function POST(request: NextRequest) {
   if (job.status === "PUBLISHED") {
     return NextResponse.json({ success: true, duplicate: true, mediaId: job.ig_media_id })
   }
+  if (job.status === "CANCELING" || job.status === "CANCELLED") {
+    return NextResponse.json({ error: "Scheduled post was cancelled" }, { status: 409 })
+  }
   if (new Date(job.scheduled_at).getTime() > Date.now() + 5_000) {
     return NextResponse.json({ error: "Scheduled time has not arrived" }, { status: 425 })
   }

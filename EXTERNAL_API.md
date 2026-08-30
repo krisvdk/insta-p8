@@ -122,7 +122,7 @@ curl "https://your-domain.com/api/v1/reels/JOB_ID" \
   -H "Authorization: Bearer $EXTERNAL_API_KEY"
 ```
 
-Possible states are `RECEIVED`, `PROCESSING`, `SCHEDULED`, `PUBLISHED`, `PUBLISHED_WITH_WARNING`, and `FAILED`. `PUBLISHED_WITH_WARNING` means the Reel published but its optional automation could not be created.
+Possible states are `RECEIVED`, `PROCESSING`, `SCHEDULED`, `CANCELLED`, `PUBLISHED`, `PUBLISHED_WITH_WARNING`, and `FAILED`. `PUBLISHED_WITH_WARNING` means the Reel published but its optional automation could not be created. Deleting an upcoming item from the Scheduled page cancels its QStash message and changes an associated external API job to `CANCELLED`.
 
 ## Response example
 

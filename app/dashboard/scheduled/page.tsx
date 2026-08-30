@@ -13,10 +13,23 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  Trash2,
   Zap,
 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 type ScheduledPost = {
   id: string
@@ -100,6 +113,7 @@ export default function ScheduledPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const loadPosts = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true)
@@ -136,6 +150,25 @@ export default function ScheduledPage() {
     if (filter === "ATTENTION") return Boolean(post.error_message)
     return true
   }), [filter, posts])
+
+  const deletePost = async (post: ScheduledPost) => {
+    if (deletingId) return
+    setDeletingId(post.id)
+    try {
+      const response = await fetch(`/api/instagram/scheduled-posts?id=${encodeURIComponent(post.id)}`, {
+        method: "DELETE",
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Could not delete scheduled post")
+      setPosts((current) => current.filter((item) => item.id !== post.id))
+      toast.success(post.media_type === "REELS" ? "Scheduled Reel deleted" : "Scheduled post deleted")
+    } catch (deleteError: any) {
+      toast.error(deleteError?.message || "Could not delete scheduled post")
+      await loadPosts(true)
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <div className="p-4 md:p-8 animate-in fade-in duration-500">
@@ -271,13 +304,47 @@ export default function ScheduledPage() {
                       )}
                     </div>
 
-                    {post.permalink && (
-                      <div className="sm:self-center">
+                    {(post.permalink || post.status === "SCHEDULED") && (
+                      <div className="flex gap-2 sm:self-center">
+                        {post.status === "SCHEDULED" && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={deletingId === post.id}
+                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              >
+                                {deletingId === post.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete this scheduled {post.media_type === "REELS" ? "Reel" : "post"}?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This cancels its queued delivery and removes it from the schedule. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Keep it</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deletePost(post)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Delete scheduled {post.media_type === "REELS" ? "Reel" : "post"}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                        {post.permalink && (
                         <Button asChild variant="outline" size="sm">
                           <Link href={post.permalink} target="_blank" rel="noopener noreferrer">
                             View <ExternalLink className="w-3.5 h-3.5" />
                           </Link>
                         </Button>
+                        )}
                       </div>
                     )}
                   </div>

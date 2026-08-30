@@ -49,6 +49,26 @@ export async function enqueueScheduledPublish(params: {
   return { messageId: result.messageId }
 }
 
+export async function cancelScheduledPublish(messageId: string): Promise<void> {
+  const token = process.env.QSTASH_TOKEN
+  if (!token) throw new Error("QSTASH_TOKEN is not configured")
+  if (!messageId) throw new Error("Scheduled message ID is missing")
+
+  const response = await fetch(`${QSTASH_PUBLISH_URL.replace("/publish", "/messages")}/${encodeURIComponent(messageId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  })
+
+  // A missing message has already left QStash. The database claim below still
+  // prevents a delivery that was already in flight from publishing it.
+  if (response.status === 404) return
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}))
+    throw new Error(result.error || result.message || "QStash could not cancel this scheduled post")
+  }
+}
+
 function verifyWithKey(signature: string, signingKey: string, body: string, url: string): void {
   const parts = signature.split(".")
   if (parts.length !== 3) throw new Error("Invalid QStash signature")

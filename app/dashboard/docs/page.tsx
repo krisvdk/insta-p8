@@ -41,6 +41,7 @@ const STATUSES = [
   ["RECEIVED", "The request was accepted and recorded."],
   ["PROCESSING", "Instagram is processing an immediate publish."],
   ["SCHEDULED", "The Reel is waiting for its scheduled time."],
+  ["CANCELLED", "The queued Reel was deleted before publication."],
   ["PUBLISHED", "The Reel and optional automation completed successfully."],
   ["PUBLISHED_WITH_WARNING", "The Reel published, but its automation could not be created."],
   ["FAILED", "Publishing failed. Read the error field for the reason."],
@@ -262,7 +263,7 @@ export default function DocumentationPage() {
               <CodeBlock>{scheduleExample}</CodeBlock>
               <div className="mt-4 flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-4 text-xs text-muted-foreground">
                 <ServerCog className="h-4 w-4 shrink-0" />
-                Scheduling requires APP_URL and all three QStash credentials listed in the reference section.
+                Scheduling requires APP_URL and all three QStash credentials listed in the reference section. Upcoming items can be deleted from Scheduled posts; deletion cancels the QStash delivery first.
               </div>
             </section>
 
