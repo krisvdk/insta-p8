@@ -391,10 +391,11 @@ http://localhost:3000
 | `INSTAGRAM_APP_SECRET` | ✅ | Instagram app secret for token exchange |
 | `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI` | ✅ | OAuth redirect URI |
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | ✅ | Webhook verification token |
+| `CRON_SECRET` | ✅ | Long random secret protecting the daily Instagram token-refresh job |
 | `GATEWAY_SECRET` | Optional | Secret used for AI gateway/proxy calls |
 | `API_SECRET_KEY` | Optional | Internal API secret for publishing hooks |
 
-**Security note:** never expose `SUPABASE_SERVICE_ROLE_KEY`, `INSTAGRAM_APP_SECRET`, user access tokens, or `API_SECRET_KEY` in client-side code.
+**Security note:** never expose `SUPABASE_SERVICE_ROLE_KEY`, `INSTAGRAM_APP_SECRET`, user access tokens, `CRON_SECRET`, or `API_SECRET_KEY` in client-side code.
 
 ---
 
@@ -403,16 +404,17 @@ http://localhost:3000
 1. Fork this repository
 2. Import it into Vercel
 3. Add all environment variables
-4. Set the production redirect URI in Meta Developer Console
-5. Set your webhook callback URL:
+4. Keep the Vercel Cron job in `vercel.json` enabled. It runs daily and renews long-lived Instagram tokens seven days before they expire.
+5. Set the production redirect URI in Meta Developer Console
+6. Set your webhook callback URL:
 
 ```txt
 https://your-domain.com/api/instagram/webhook
 ```
 
-6. Deploy
-7. Connect your Instagram Business/Creator account
-8. Create your first automation
+7. Deploy
+8. Connect your Instagram Business/Creator account
+9. Create your first automation
 
 ---
 
