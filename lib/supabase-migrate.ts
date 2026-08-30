@@ -12,6 +12,7 @@ let _running: Promise<void> | null = null
  *   - CREATE TABLE IF NOT EXISTS
  *   - CREATE INDEX IF NOT EXISTS
  *   - CREATE EXTENSION IF NOT EXISTS
+ *   - ALTER TABLE ... ADD COLUMN IF NOT EXISTS
  *   - CREATE OR REPLACE FUNCTION (plpgsql RPCs, including $$ ... $$ bodies)
  *
  * Manual one-time setup (apply via Supabase SQL editor -- anon role required):
@@ -30,6 +31,7 @@ const EXPECTED_TABLES = [
   "scheduler_config",
   "reels_posts",
   "scheduled_posts",
+  "external_api_jobs",
   "dm_queue",
   "unlock_attempts",
 ]
@@ -45,7 +47,7 @@ export async function ensureSchema(): Promise<void> {
       return
     }
 
-    console.log(`[migrate] Applying schema.sql (idempotent CREATE TABLE / INDEX / EXTENSION / FUNCTION)...`)
+    console.log(`[migrate] Applying safe, idempotent schema.sql statements...`)
 
     const sql = fs.readFileSync(schemaPath, "utf8")
     const supabase = getSupabaseAdmin()
@@ -75,7 +77,7 @@ export async function ensureSchema(): Promise<void> {
 
 /**
  * Extract CREATE TABLE / CREATE INDEX / CREATE EXTENSION / CREATE OR REPLACE
- * FUNCTION statements from schema.sql. We deliberately EXCLUDE CREATE POLICY
+ * FUNCTION and additive ALTER TABLE statements from schema.sql. We deliberately EXCLUDE CREATE POLICY
  * -- policies require one-time application in the SQL editor because they
  * reference the `anon` role and the table-level ALTER TABLE ... ENABLE ROW
  * LEVEL SECURITY.
@@ -98,7 +100,7 @@ function parseSafeStatements(sql: string): string[] {
 
   for (const line of lines) {
     const trimmed = line.trim()
-    const starts = /^(CREATE\s+(TABLE|INDEX|EXTENSION)\s+IF\s+NOT\s+EXISTS|CREATE\s+OR\s+REPLACE\s+FUNCTION)/i.test(trimmed)
+    const starts = /^(CREATE\s+(TABLE|INDEX|EXTENSION)\s+IF\s+NOT\s+EXISTS|CREATE\s+OR\s+REPLACE\s+FUNCTION|ALTER\s+TABLE\s+\S+\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS)/i.test(trimmed)
 
     if (!inStatement && starts) {
       inStatement = true

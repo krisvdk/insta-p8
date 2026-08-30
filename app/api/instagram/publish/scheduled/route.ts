@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { publishInstagramMedia, removeStoredMedia } from "@/lib/instagram-publishing"
+import { createAutomationForMedia } from "@/lib/automation-template"
 import { getScheduledPublishUrl, verifyQStashRequest } from "@/lib/qstash"
 import { getSupabaseServerClient } from "@/lib/supabase-server"
 
@@ -76,32 +77,16 @@ export async function POST(request: NextRequest) {
       mediaUrl: job.media_url,
       mediaItems: Array.isArray(job.media_items) ? job.media_items : [],
       caption: job.caption || "",
-    })
+    }, { allowExternalMedia: job.allow_external_media === true })
 
     let automationId: string | null = null
     let automationError: string | null = null
     if (job.automation_template) {
       const template = job.automation_template
-      const { data: automation, error: createAutomationError } = await supabase
-        .from("automations")
-        .insert({
-          user_id: job.user_id,
-          name: template.name,
-          trigger_source: "comment",
-          trigger_type: template.trigger_type || "keyword",
-          trigger_value: template.trigger_value,
-          response_type: template.response_type || "pro",
-          response_content: template.response_content,
-          specific_media_id: result.mediaId,
-          is_active: true,
-        })
-        .select("id")
-        .single()
-
-      if (createAutomationError) {
-        automationError = `Reel published, but automation creation failed: ${createAutomationError.message}`
-      } else {
-        automationId = automation.id
+      try {
+        automationId = await createAutomationForMedia(String(job.user_id), result.mediaId, template)
+      } catch (error: any) {
+        automationError = `Reel published, but automation creation failed: ${error?.message || "unknown error"}`
       }
     }
 
@@ -119,6 +104,19 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", scheduledPostId)
 
+    if (job.external_api_job_id) {
+      const externalResult = { delivery: "published", ...result, automationId, automationError }
+      await supabase.from("external_api_jobs").update({
+        status: automationError ? "PUBLISHED_WITH_WARNING" : "PUBLISHED",
+        ig_media_id: result.mediaId,
+        permalink: result.permalink,
+        automation_id: automationId,
+        error_message: automationError,
+        result: externalResult,
+        updated_at: new Date().toISOString(),
+      }).eq("id", job.external_api_job_id)
+    }
+
     await removeStoredMedia(
       job.media_type === "CAROUSEL" && Array.isArray(job.media_items)
         ? job.media_items.map((item: { mediaUrl: string }) => item.mediaUrl)
@@ -135,6 +133,14 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", scheduledPostId)
+
+    if (job.external_api_job_id) {
+      await supabase.from("external_api_jobs").update({
+        status: "FAILED",
+        error_message: error?.message || "Instagram publishing failed",
+        updated_at: new Date().toISOString(),
+      }).eq("id", job.external_api_job_id)
+    }
 
     console.error("[schedule] Scheduled Instagram publishing failed:", error)
     return NextResponse.json(

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { readInstagramSessionUserId } from "@/lib/instagram-session-server"
+import { ensureSchema } from "@/lib/supabase-migrate"
 import { getSupabaseServerClient } from "@/lib/supabase-server"
 
 export async function GET(request: NextRequest) {
@@ -9,6 +10,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Please reconnect your Instagram account" }, { status: 401 })
     }
 
+    await ensureSchema()
     const supabase = await getSupabaseServerClient()
     const { data, error } = await supabase
       .from("scheduled_posts")

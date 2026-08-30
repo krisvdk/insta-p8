@@ -7,6 +7,7 @@
 --   * CREATE TABLE IF NOT EXISTS
 --   * CREATE INDEX IF NOT EXISTS
 --   * CREATE EXTENSION IF NOT EXISTS
+--   * ALTER TABLE ... ADD COLUMN IF NOT EXISTS
 --
 -- Manual one-time setup (apply via Supabase SQL editor -- anon role required):
 --   * CREATE POLICY (RLS)
@@ -188,6 +189,8 @@ CREATE TABLE IF NOT EXISTS public.scheduled_posts (
   caption TEXT,
   automation_template JSONB,
   automation_id UUID REFERENCES public.automations(id) ON DELETE SET NULL,
+  allow_external_media BOOLEAN NOT NULL DEFAULT FALSE,
+  external_api_job_id UUID,
   scheduled_at TIMESTAMPTZ NOT NULL,
   qstash_message_id TEXT,
   status TEXT NOT NULL DEFAULT 'SCHEDULED',
@@ -198,6 +201,34 @@ CREATE TABLE IF NOT EXISTS public.scheduled_posts (
   permalink TEXT,
   error_message TEXT,
   published_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CREATE TABLE IF NOT EXISTS does not add fields to an existing installation.
+-- Keep these additive upgrades so older scheduled_posts tables self-heal.
+ALTER TABLE public.scheduled_posts ADD COLUMN IF NOT EXISTS media_items JSONB;
+ALTER TABLE public.scheduled_posts ADD COLUMN IF NOT EXISTS automation_template JSONB;
+ALTER TABLE public.scheduled_posts ADD COLUMN IF NOT EXISTS automation_id UUID REFERENCES public.automations(id) ON DELETE SET NULL;
+ALTER TABLE public.scheduled_posts ADD COLUMN IF NOT EXISTS allow_external_media BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.scheduled_posts ADD COLUMN IF NOT EXISTS external_api_job_id UUID;
+
+-- ==========================================
+-- 10c. Table: public.external_api_jobs
+-- Idempotent audit/status records for requests submitted by another site.
+-- ==========================================
+CREATE TABLE IF NOT EXISTS public.external_api_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  idempotency_key TEXT UNIQUE NOT NULL,
+  user_id BIGINT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  request JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'RECEIVED',
+  scheduled_post_id UUID,
+  ig_media_id TEXT,
+  permalink TEXT,
+  automation_id UUID REFERENCES public.automations(id) ON DELETE SET NULL,
+  error_message TEXT,
+  result JSONB,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -242,6 +273,7 @@ CREATE INDEX IF NOT EXISTS idx_scheduler_next_run ON public.scheduler_config(nex
 CREATE INDEX IF NOT EXISTS idx_reels_posts_user_status ON public.reels_posts(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_scheduled_posts_user_status ON public.scheduled_posts(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_scheduled_posts_scheduled_at ON public.scheduled_posts(scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_external_api_jobs_user_created ON public.external_api_jobs(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_unlock_attempts_updated ON public.unlock_attempts(updated_at);
 
 -- ==========================================
@@ -422,6 +454,7 @@ ALTER TABLE public.content_pool ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scheduler_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reels_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scheduled_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.external_api_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dm_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.unlock_attempts ENABLE ROW LEVEL SECURITY;
 

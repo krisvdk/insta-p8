@@ -381,6 +381,8 @@ http://localhost:3000
 
 ## 🔐 Environment Variables
 
+This deployment also supports private admin-code access and a server-to-server Reel publishing API. See [External Reel API](./EXTERNAL_API.md) for setup, scheduling, idempotency, status checks, and every automation option.
+
 | Variable | Required | Description |
 |---|---:|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL |
@@ -392,6 +394,10 @@ http://localhost:3000
 | `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI` | ✅ | OAuth redirect URI |
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | ✅ | Webhook verification token |
 | `CRON_SECRET` | ✅ | Long random secret protecting the daily Instagram token-refresh job |
+| `ADMIN_CODE` | ✅ | Private code required to open any page or dashboard API |
+| `ADMIN_SESSION_SECRET` | Recommended | Separate random secret used to sign the 30-day admin session cookie |
+| `EXTERNAL_API_KEY` | For external API | Bearer key accepted by `/api/v1/reels` |
+| `EXTERNAL_API_INSTAGRAM_USER_ID` | For external API | Default connected Instagram account used by external requests |
 | `GATEWAY_SECRET` | Optional | Secret used for AI gateway/proxy calls |
 | `API_SECRET_KEY` | Optional | Internal API secret for publishing hooks |
 

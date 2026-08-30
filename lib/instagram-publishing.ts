@@ -35,6 +35,8 @@ export type InstagramPublishResult = {
   timestamp: string
 }
 
+type PublishValidationOptions = { allowExternalMedia?: boolean }
+
 export function parsePublishInput(body: any): InstagramPublishInput {
   return {
     mediaType: body?.mediaType,
@@ -49,7 +51,7 @@ export function parsePublishInput(body: any): InstagramPublishInput {
   }
 }
 
-export function validatePublishInput(input: InstagramPublishInput): string | null {
+export function validatePublishInput(input: InstagramPublishInput, options: PublishValidationOptions = {}): string | null {
   if (input.mediaType !== "IMAGE" && input.mediaType !== "REELS" && input.mediaType !== "CAROUSEL") {
     return "Choose an image post, Reel, or carousel"
   }
@@ -62,13 +64,29 @@ export function validatePublishInput(input: InstagramPublishInput): string | nul
     )) {
       return "Upload every carousel item through insta-p8 before publishing"
     }
-  } else if (!isAllowedStorageUrl(input.mediaUrl)) {
+  } else if (!isAllowedStorageUrl(input.mediaUrl) && !(options.allowExternalMedia && isPublicHttpsUrl(input.mediaUrl))) {
     return "Upload the media through insta-p8 before publishing"
   }
   if (input.caption.length > MAX_CAPTION_LENGTH) {
     return `Caption must be ${MAX_CAPTION_LENGTH} characters or fewer`
   }
   return null
+}
+
+export function isPublicHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "https:" || url.username || url.password) return false
+    const hostname = url.hostname.toLowerCase()
+    if (hostname === "localhost" || hostname.endsWith(".local")) return false
+    if (/^(127\.|10\.|0\.|169\.254\.|192\.168\.)/.test(hostname)) return false
+    const private172 = hostname.match(/^172\.(\d+)\./)
+    if (private172 && Number(private172[1]) >= 16 && Number(private172[1]) <= 31) return false
+    if (hostname === "::1" || hostname.startsWith("fc") || hostname.startsWith("fd") || hostname.startsWith("fe80:")) return false
+    return true
+  } catch {
+    return false
+  }
 }
 
 function isAllowedStorageUrl(value: string): boolean {
@@ -142,8 +160,9 @@ async function waitForContainer(containerId: string, token: string): Promise<voi
 export async function publishInstagramMedia(
   userId: string,
   input: InstagramPublishInput,
+  options: PublishValidationOptions = {},
 ): Promise<InstagramPublishResult> {
-  const validationError = validatePublishInput(input)
+  const validationError = validatePublishInput(input, options)
   if (validationError) throw new Error(validationError)
 
   const supabase = await getSupabaseServerClient()

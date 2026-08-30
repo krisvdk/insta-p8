@@ -4,7 +4,7 @@ import type React from "react"
 import { cn } from "@/lib/utils"
 import {
   Zap, LayoutDashboard, LogOut, Settings, BarChart3,
-  MessageSquare, Snowflake, Send, SquarePlus, CalendarClock,
+  MessageSquare, Snowflake, Send, SquarePlus, CalendarClock, BookOpen,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -71,6 +71,22 @@ export function Sidebar({ className, username = "creator", profilePic, onLogout,
         <div className="pt-5 pb-1 px-3">
           <div className="h-px bg-sidebar-border" />
         </div>
+
+        <Link
+          href="/dashboard/docs"
+          onClick={onNavigate}
+          aria-current={pathname === "/dashboard/docs" ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-md text-[13px] transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+            pathname === "/dashboard/docs"
+              ? "text-sidebar-foreground bg-sidebar-accent font-medium"
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60",
+          )}
+        >
+          {pathname === "/dashboard/docs" && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-full bg-accent-yellow" />}
+          <BookOpen className="w-4 h-4 shrink-0" strokeWidth={1.8} />
+          <span>Documentation</span>
+        </Link>
 
         <Link
           href="/dashboard/settings"

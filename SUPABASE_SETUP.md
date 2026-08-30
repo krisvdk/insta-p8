@@ -116,9 +116,10 @@ start:
 ensureSchema().catch((e) => console.warn("[webhook] ensureSchema failed:", e?.message))
 ```
 
-It opens the bundled `schema.sql`, extracts only `CREATE TABLE / INDEX /
-EXTENSION` statements (deliberately skipping `CREATE POLICY` and `ALTER
-TABLE ... ENABLE ROW LEVEL SECURITY`), and runs them through the RPC
+It opens the bundled `schema.sql`, extracts safe `CREATE TABLE / INDEX /
+EXTENSION`, `CREATE OR REPLACE FUNCTION`, and additive `ALTER TABLE ... ADD
+COLUMN IF NOT EXISTS` statements (deliberately skipping `CREATE POLICY` and
+`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`), and runs them through the RPC
 `exec_sql(sql text)` if the project has it set up. If not, it logs a clear
 warning and falls back to the SQL-editor path.
 
